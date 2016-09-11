@@ -1,0 +1,76 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import org.scalatest.FunSuite
+import org.scalatest.matchers.ShouldMatchers
+import org.junit.runner.RunWith
+import org.scalatest.junit.JUnitRunner
+import fr.cnrs.liris.scars.api._
+import fr.cnrs.liris.scars.api.Conversion._
+import fr.cnrs.liris.scars.test.Conversion._
+import parent.SingleParent
+import fr.cnrs.liris.scars.test.SocialScorerTool
+
+/**
+ * @author  Simon Meyffret
+ * @version 0.0.1
+ * @since   scala 2.8
+ * Date: 9 déc. 2010
+ * Time: 12:32:04
+ */
+
+@RunWith(classOf[JUnitRunner])
+class MultipleSocialScorerSimpleTest extends FunSuite with ShouldMatchers {
+
+  val nbUser = 5
+  implicit val database = new MockDatabase()
+  import database.trust
+  (1 to nbUser) foreach { user => ((user + 1) to nbUser) foreach {other =>
+    trust(user, other, 1)
+  }}
+
+  val nbItem = 3
+  database(1, 1) = 0.5
+  database(2, 1) = 0.1; database(2, 2) = 0.2; database(2, 3) = 0.3
+  database(3, 1) = 0.0; database(3, 2) = 1.0
+  database(4, 1) = 0.5; database(4, 2) = 0.5; database(4, 3) = 0.1
+  database(5, 1) = 0.1; database(5, 2) = 0.2; database(5, 3) = 0.3
+
+  val scorer = new MultipleSocialScorer(1, 1) with SingleParent
+
+  test("A 1-1 social scorer return existing scores") {
+	val reviews1 = reviews(1, 1)
+    val scores1 = scorer.scores(1, reviews1, Set.empty)
+    scores1 should have size(1)
+	score(1, 1, scores1) should be (Some((0.1 + 0 + 0.5 + 0.1) / 4))
+
+//    scorer.score(2, 1) should be (Some(0.1))
+//    scorer.score(2, 2) should be (Some(0.2))
+//    scorer.score(2, 3) should be (Some(0.3))
+//
+//    scorer.score(3, 1) should be (Some(0.0))
+//    scorer.score(3, 2) should be (Some(1.0))
+//
+//    scorer.score(4, 1) should be (Some(0.5))
+//    scorer.score(4, 2) should be (Some(0.5))
+//    scorer.score(4, 3) should be (Some(0.1))
+//
+//    scorer.score(5, 1) should be (Some(0.1))
+//    scorer.score(5, 2) should be (Some(0.2))
+//    scorer.score(5, 3) should be (Some(0.3))
+  }
+
+//  test("A 1-1 social scorer return direct friends scores") {
+//    scorer.score(1, 2) should be (Some((0.2 + 1.0 + 0.5 + 0.2) / 4))
+//    scorer.score(1, 3) should be (Some((0.3 + 0.1 + 0.3) / 3))
+//
+//    scorer.score(3, 3) should be (Some((0.1 + 0.3) / 2))
+//  }
+
+  def reviewsFromActor(actor: Actor) = database.reviews.toSet.filter{ _.actor == actor }
+  def reviews(actor: Actor, item: Item) = reviewsFromActor(actor).filter{ _.item == item }
+  def review(actor: Actor, item: Item) = reviews(actor, item).head
+  
+  def score(actor: Actor, item: Item, scores: Map[Review, Option[Score]]) = {
+    scores.get(review(actor, item)).flatMap(_.map(_.value))
+  }
+}

@@ -1,0 +1,3 @@
+#! /bin/sh
+
+kill -CONT `ps aux | grep Scars | grep java | awk '{print $2}'`

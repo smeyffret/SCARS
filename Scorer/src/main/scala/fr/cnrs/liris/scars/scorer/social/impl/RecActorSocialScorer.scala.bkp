@@ -1,0 +1,113 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import fr.cnrs.liris.scars.api._
+
+/**
+ * A scorer which estimates the score of an item by a actor using the actor's friends' scores.
+ * To estimate an item scored by a actor, it ask the actor friends score for this item and
+ * combine them. For each friend, if it didn't scored the item, then it ask to his friends...
+ *
+ * @author  Simon Meyffret
+ * @version 0.0.1
+ * @since   scala 2.8
+ * Date: 18 sept. 2010
+ * Time: 18:54:25
+ *
+ * @param similarity relations between actor to get friends and friends coefficients
+ * @param scores scores already defined in the system, used to get friends scores
+ * @param hops maximum scores you can ask in the same relation branch
+ * @param depth maximum depth you can go in a branch to ask for score
+ * @param alpha0 the weight of actor's score regarding his friends
+ * @param beta0 the weight of friends' score regarding a actor
+ */
+
+//TODO: no hops here since it is Review specific (and not global)
+abstract class RecActorSocialScorer(hops: Int, depth: Int, alpha: Double = 0.5) extends ActorSocialScorer(hops, depth, alpha) {
+
+  override def social_score(actor: Actor, item: Item, parent: Parent, without: Set[Review], hops: Int, n: Int) = {
+    None
+  }
+
+  def social_scores(actor: Actor, reviews: Set[Review], parent: Parent, without: Set[Review], hops: Int, n: Int) = n match {
+    case neg if (neg < 0) =>
+      throw new IllegalArgumentException("depth=%d must be positive".format(n))
+    case 0 =>
+      reviews.map{r => r -> None}.toMap ++ scores_0(actor, reviews, without)
+    case _ =>
+      scores_n(actor, reviews, parent, without, hops, n)
+  }
+
+  def scores_n(actor: Actor, reviews: Set[Review], parent: Parent, without: Set[Review], hops: Int, n: Int) = {
+    val actorScores = scores_0(actor, reviews, without)
+    
+    val newHops = hops
+    val remainReviews = reviews -- actorScores.keySet
+
+    val friendsScore = friends_scores_n(actor, remainReviews, parent, without, newHops, n)
+    
+    friendsScore ++ actorScores
+
+//    merge_scores(actorScore, friendsScore)
+  }
+
+  def friends_scores_n(actor: Actor, reviews: Set[Review], parent: Parent, without: Set[Review], hops: Int, n: Int) = hops match {
+    case neg if (neg < 0) =>
+      throw new IllegalArgumentException("hops=%d must be positive".format(hops))
+    case 0 =>
+      Map.empty
+    case _ =>
+      val scores = for {
+          friend <- friends(actor, parent, reviews, without)//.toStream // lazy pour ne pas perdre les doublons (attention, view entraine de recalculer le score à chaque accès!)
+          (review, scoreOption) <- social_scores(friend, reviews, parents(parent, actor), without, hops, n - 1)
+      } yield (review, for {
+          score <- scoreOption
+          item = review.item
+          weight <- weight(actor, friend, item, add_without(reviews, without, review), score) if (weight != 0)
+      } yield score -> weight)
+      
+      val friendsScores = scores.groupBy(_._1).mapValues{ _.toList.map(_._2) }
+
+      friends_scores(friendsScores, n)
+      
+      
+//      val friendsScores = collection.mutable.Map[Review, List[(Score, Double)]]()
+//      for {
+//        friend <- friends(actor, parent).view
+//        (review, scoreOption) <- social_scores(friend, reviews, parents(parent, actor), hops, n - 1)
+//        score <- scoreOption
+//        weight <- weight(actor, friend, review.item)
+//      } {
+//        val existingReviews = friendsScores.getOrElse(review, List.empty)
+//        friendsScores += review -> ((score, weight) :: existingReviews)
+//      }
+//
+//      friends_score(friendsScores.toMap, n)
+  }
+
+//  def weight_ratings(reviewsScores: Map[Review, Iterable[(Score, Double)]], n: Int) = {
+//    reviewsScores.mapValues { scores => scores.map {
+//      case (rating, weight) =>
+//        (Score(rating.value * weight), weight)
+//    }}
+//  }
+
+  def friends_scores(friendsScores: Map[Review, Iterable[Option[(Score, Double)]]], n: Int) = {
+    friendsScores.mapValues{ values =>
+      friends_score(values, n)
+    }
+        
+//    weight_ratings(friendsScores, n).mapValues { weightScores =>
+//      val (scores, weights) = weightScores.unzip
+//
+//      val scoreSum = scores.map{_.value}.sum
+//      val weightSum = weights.sum
+//
+//      if (weightSum == 0)
+//        None
+//      else {
+//        Some(Score(scoreSum / weightSum))
+//      }
+//    }.toMap
+  }
+
+}

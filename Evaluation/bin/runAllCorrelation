@@ -1,0 +1,14 @@
+#! /bin/sh
+
+PEARSON="pearson_data.txt"
+FILES="global common1 extended1 common2 extended2"
+DATASET="alchemy"
+EVAL=$DATASET/1/90
+
+for file in $FILES
+do
+    mkdir --parents result/$EVAL/original/heuristics
+    rm $DATASET/$PEARSON
+    ln -s ${file}_$PEARSON $DATASET/$PEARSON
+    echo "./runScars --massa $EVAL/ --save result/$EVAL/original/heuristics/${file}_ | tee -a result/$EVAL/result_correlation"
+done

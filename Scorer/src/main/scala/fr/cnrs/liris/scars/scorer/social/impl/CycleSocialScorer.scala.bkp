@@ -1,0 +1,105 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import fr.cnrs.liris.scars.api._
+import fr.cnrs.liris.scars.scorer.social._
+
+/**
+ * A scorer which estimates the score of an item by a actor using the actor's friends' scores.
+ * To estimate an item scored by a actor, it ask the actor friends score for this item and
+ * combine them. For each friend, if it didn't scored the item, then it ask to his friends...
+ *
+ * @author  Simon Meyffret
+ * @version 0.0.1
+ * @since   scala 2.8
+ * Date: 18 sept. 2010
+ * Time: 18:54:25
+ *
+ * @param similarity relations between actor to get friends and friends coefficients
+ * @param scores scores already defined in the system, used to get friends scores
+ * @param hops maximum scores you can ask in the same relation branch
+ * @param depth maximum depth you can go in a branch to ask for score
+ * @param alpha0 the weight of actor's score regarding his friends
+ * @param beta0 the weight of friends' score regarding a actor
+ */
+
+abstract class CycleSocialScorer(hops: Int, depth: Int, alpha: Double = 0.5) extends SocialScorer(hops, depth, alpha) {
+
+  type Ratings = Map[Actor, List[Option[(Score, Double)]]]
+  
+  abstract sealed class Action
+  case class Request(requesters: List[Actor], actor: Actor, parent: Parent) extends Action
+  case class Response(actor: Actor, requesters: List[Actor], score: Option[Score]) extends Action
+  
+  def social_score(original_requester: Actor, item: Item, original_parent: Parent, without: Set[Review], hops: Int, n: Int) = {
+    
+    @scala.annotation.tailrec
+    def run(agenda: List[Action], ratings: Ratings): Option[Score] = {
+      agenda match {
+        
+        case Request(requesters, actor, parent) :: rest =>
+          process_request(requesters, actor, parent, rest, ratings)
+
+        case Response(actor, Nil, score) :: Nil =>
+          score
+
+        case Response(friend, actor :: requesters, response) :: rest =>
+          val friendsScores = friends_scores(friend, actor, response, ratings)
+          if (has_received_all_responses(actor, friendsScores)) {
+            send_response(friendsScores, actor, requesters, rest, ratings)
+          } else {
+            val new_ratings = ratings + (actor -> friendsScores)
+            run(rest, new_ratings)
+          }
+
+        case error =>
+          sys.error("Problème dans la gestion de l'agenda, action inconnue :\n" + error)
+          
+      }
+    }
+    
+    @scala.inline
+    def process_request(requesters: List[Actor], actor: Actor, parent: Parent, rest: List[Action], ratings: Ratings) = {
+      val score0 = score_0(actor, item, without)
+      val n = requesters.size
+      if (score0.isDefined || n >= depth || actor.friendsCount == 0) {
+        val action = Response(actor, requesters, score0)
+        run(action :: rest, ratings)
+      } else {
+        val newAgenda = friends(actor, parent).view.
+        map{ f => Request(actor :: requesters, f, parents(parent, actor)) }.toList
+        run(newAgenda ::: rest, ratings)
+      }
+    }
+    
+    @scala.inline
+    def friends_scores(friend: Actor, actor: Actor, response: Option[Score], ratings: Ratings) = {
+      val existings_ratings = ratings.getOrElse(actor, Nil)
+      val new_rating = for{
+        score <- response
+        weight <- weight(actor, friend, item, without, score) if (weight != 0)
+      } yield (score, weight)
+      new_rating :: existings_ratings
+    }
+
+    @scala.inline
+    def has_received_all_responses(actor: Actor, friendsScores: List[Option[(Score, Double)]]) = {
+      friendsScores.lengthCompare(actor.friendsCount) == 0
+    }
+
+    @scala.inline
+    def send_response(friendsScores: List[Option[(Score, Double)]], actor: Actor, requesters: List[Actor], rest: List[Action], ratings: Ratings) = {
+      val n = requesters.size
+      val score = friends_score(friendsScores, n)
+      val response = Response(actor, requesters, score)
+      run(response :: rest, ratings - actor)
+    }
+    
+    
+    run(Request(Nil, original_requester, original_parent) :: Nil, Map.empty)
+  }
+  
+
+
+  override def toString = "cycle_" + super.toString
+
+}

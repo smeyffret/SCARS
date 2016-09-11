@@ -1,0 +1,122 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import fr.cnrs.liris.scars.api._
+import parent._
+
+/**
+ * A scorer which estimates the score of an item by a actor using the actor's friends' scores.
+ * To estimate an item scored by a actor, it ask the actor friends score for this item and
+ * combine them. For each friend, if it didn't scored the item, then it ask to his friends...
+ *
+ * @author  Simon Meyffret
+ * @version 0.0.1
+ * @since   scala 2.8
+ * Date: 18 sept. 2010
+ * Time: 18:54:25
+ *
+ * @param similarity relations between actor to get friends and friends coefficients
+ * @param scores scores already defined in the system, used to get friends scores
+ * @param hops maximum scores you can ask in the same relation branch
+ * @param depth maximum depth you can go in a branch to ask for score
+ * @param alpha0 the weight of actor's score regarding his friends
+ * @param beta0 the weight of friends' score regarding a actor
+ */
+
+//TODO: pas de gestion du without: classe à redévelopper de A à Z pour en faire CoTCoDepth performant
+abstract class MultipleSocialScorer(val hops: Int, val depth: Int, val alpha: Double = 0.5) extends Scorer with Parent with ActorScorer {
+
+  require(depth >= 0, "depth=%d must be positive".format(depth))
+  require(hops > 0, "hops=%d must be strictly positive".format(hops))
+
+  def scores(actor: Actor, reviews: Set[Review], without: Set[Review]) = {
+    social_score(actor, reviews, defaultParent, hops, depth)
+  }
+  
+  def score(actor: Actor, item: Item, without: Set[Review]) = {
+    None
+  }
+
+  def score_0(actor: Actor, reviews: Set[Review]) = {
+    {
+      for {
+        review <- (reviews -- actor.reviews)
+        score = rating(actor, review.item, Set.empty)
+      } yield (review -> score)
+    }.toMap
+  }
+
+  def social_score(actor: Actor, reviews: Set[Review], parent: Parent, hops: Int, n: Int) = n match {
+    case neg if (neg < 0) =>
+      throw new IllegalArgumentException("depth=%d must be positive".format(n))
+    case 0 =>
+      score_0(actor, reviews)
+    case _ =>
+      score_n(actor, reviews, parent, hops, n)
+  }
+
+  def score_n(actor: Actor, reviews: Set[Review], parent: Parent, hops: Int, n: Int): Map[Review, Option[Score]] = {
+    val actorScores = score_0(actor, reviews)
+    val remainReviews = reviews -- actorScores.keySet
+
+    val friendsScore = friends_score_n(actor, remainReviews, parent, hops, n)
+    
+    actorScores ++ friendsScore
+
+//    merge_scores(actorScore, friendsScore)
+  }
+
+  def friends_score_n(actor: Actor, reviews: Set[Review], parent: Parent, hops: Int, n: Int): Map[Review, Option[Score]] = hops match {
+    case neg if (neg < 0) =>
+      throw new IllegalArgumentException("hops=%d must be positive".format(hops))
+    case 0 =>
+      Map.empty
+    case _ =>
+      val friendsScores = collection.mutable.Map[Review, List[(Score, Double)]]()
+      for {
+        friend <- friends(actor, parent).view
+        (review, scoreOption) <- social_score(friend, reviews, parents(parent, actor), hops, n - 1)
+        score <- scoreOption
+        weight <- weight(actor, friend, review.item)
+      } {
+        val existingReviews = friendsScores.getOrElse(review, List.empty)
+        friendsScores += review -> ((score, weight) :: existingReviews)
+      }
+
+      friends_score(friendsScores.toMap, n)
+  }
+
+  def weight(actor: Actor, friend: Actor, item: Item) = actor.trust(friend)
+
+  def weight_ratings(reviewsScores: Map[Review, Iterable[(Score, Double)]], n: Int) = {
+    reviewsScores.mapValues { scores => scores.map {
+      case (rating, weight) =>
+        (Score(rating.value * weight), weight)
+    }}
+  }
+
+  def friends_score(friendsScores: Map[Review, Iterable[(Score, Double)]], n: Int) = {
+    weight_ratings(friendsScores, n).mapValues { weightScores =>
+      val (scores, weights) = weightScores.unzip
+
+      val scoreSum = scores.map{_.value}.sum
+      val weightSum = weights.sum
+
+      if (weightSum == 0)
+        None
+      else {
+        Some(Score(scoreSum / weightSum))
+      }
+    }
+  }
+
+  def merge_scores(actor_score: Option[Score], friends_score: Option[Score]): Option[Score] =
+    (actor_score, friends_score) match {
+      case (None, None) => None
+      case (None, score) => score
+      case (score, None) => score
+      case (Some(actor), Some(friends)) => Some(Score(actor.value * alpha + friends.value * (1 - alpha)))
+    }
+
+  override def toString = "msocial_h%d_n%d".format(hops, depth)
+
+}

@@ -1,0 +1,18 @@
+#! /bin/sh
+
+NB=$#
+FILES=$*
+
+echo $NB
+echo $FILES
+TMP=.tmp.filtering
+DIR="filtered"
+
+cat $FILES | grep "[^ ]* [^ ]* " | awk '{print $1, $2}' | sort -n | uniq -c | awk -v NB=$NB '{if ($1==NB) print $2, $3}' > $TMP
+#sort $FILES | awk '{print $1, $2}' | uniq -c | grep "\\s*$NB " | awk '{printf "^%s %s \n",$2, $3}' > $TMP
+mkdir $DIR --parents
+for FILE in $FILES
+do
+    grep -f $TMP $FILE > "$DIR/$FILE"
+done
+rm $TMP

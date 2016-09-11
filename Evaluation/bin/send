@@ -1,0 +1,18 @@
+#! /bin/bash
+FILES="CoTCoD1 CoTCoD2 CoTCoDa2 CoTCoDi2 CoTCoDia2 CoTCoD3 TrustAll"
+DEST="/home/smeyffret/todo/gfx/plot/appolicious/data"
+
+NUMBER=$1
+RESULT="results_all"
+DIR="result/appolicious"
+DIRS="$DIR/${NUMBER}/20/$RESULT $DIR/${NUMBER}/50/$RESULT $DIR/${NUMBER}/80/$RESULT $DIR/${NUMBER}/90/$RESULT $DIR/$RESULT"
+CONTEXT=8
+
+for file in $FILES
+do
+    dest=$DEST/$file
+    cat $DIRS | \
+        sed -e 's/ \+/ /g' -e 's/,/./g' -e 's/%//g' | \
+        cut -d" " -f1- | \
+        grep "$file" -A $CONTEXT | grep -v "^--$" > $dest
+done

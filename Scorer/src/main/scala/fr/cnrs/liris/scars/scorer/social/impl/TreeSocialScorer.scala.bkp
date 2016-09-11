@@ -1,0 +1,112 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import fr.cnrs.liris.scars.api._
+import fr.cnrs.liris.scars.scorer.social._
+
+/**
+ * ATTENTION : classe non testée !!!!
+ */
+
+case class Node(actor: Actor, item: Item, var score: Option[Score])
+case class MTree[T](value: T, var done: Boolean, var children: List[MTree[T]]) {
+  def this(value: T) = this(value, true, List())
+//  override def toString = "M(" + value.toString + " {" + children.map(_.toString).mkString(",") + "})"
+}
+
+abstract class TreeSocialScorer(hops: Int, depth: Int, alpha: Double = 0.5) extends SocialScorer(hops, depth, alpha) {
+
+  override def score(actor: Actor, item: Item, without: Set[Review]) = {
+    social_score(build_tree(actor, item, defaultParent, without, depth), without, 0)
+  }
+
+  def build_tree(root: Actor, item: Item, _parent: Parent, without: Set[Review], _n: Int): MTree[Node] = {
+    
+    def buildNode(node: Actor) = MTree(Node(node, item, score_0(node, item, without)), false, Nil)
+    def nodeFriends(node: MTree[Node], parent: Parent) = super.friends(node.value.actor, parent, item, without)
+    
+    @scala.annotation.tailrec
+    def color(_node: Option[MTree[Node]], _nodes: List[MTree[Node]], friends: List[Actor], parent: Parent, n: Int): List[MTree[Node]] = {
+      if (_node.isEmpty && _nodes.isEmpty)
+        return Nil
+      val (node, nodes) = if (_node.isDefined && !_node.get.done) {
+        (_node.get, _nodes)
+      } else {
+        (_nodes.head, _nodes.tail)
+      }
+      import node.value.{actor, score => score0}
+      if (n == 0 || score0.isDefined) {
+        node.done = true
+        nodes
+      } else if (friends.isEmpty) {
+        val uncoloredChild = node.children.find(!_.done)
+        if (uncoloredChild.isEmpty) {
+          node.done = true
+          color(None, nodes, Nil, parent, n)
+        } else {
+          val child = uncoloredChild
+          val childFriends = nodeFriends(child.get, parent)
+          color(child, nodes, childFriends.toList, parents(parent, actor), n - 1)
+        }
+      } else {
+        val friend = friends.head
+        val friendsLeft = friends.tail
+        val friendTree = buildNode(friend)
+        node.children = friendTree :: node.children
+        color(Some(node), nodes, friendsLeft, parent, n)
+      }
+    }
+    
+    var node = buildNode(root)
+    val friends = nodeFriends(node, _parent)
+    color(Some(node), Nil, friends.toList, _parent, _n)
+    while (!node.done){
+      color(Some(node), Nil, Nil, _parent, _n)
+    }
+    node
+  }
+  
+//  def build_tree(root: Actor, item: Item, _parent: Parent, without: Set[Review], _n: Int): MTree[Node] = {
+//    def buildNode(node: Actor) = MTree(Node(node, item, score_0(node, item, without)), false, Nil)
+//    @scala.annotation.tailrec
+//    def color(treeNode: MTree[Node], friends: List[Actor], children: List[MTree[Node]], parent: Parent, n: Int) {
+//      import treeNode.value.{actor, score => score0}
+//      if (n == 0 || score0.isDefined) {
+//        treeNode.done = true
+//      } else if (friends.isEmpty && children.isEmpty) {
+//        treeNode.done = true
+//      } else if (!friends.isEmpty) {
+//        val friend = friends.head
+//        val friendsLeft = friends.tail
+//        val friendTree = buildNode(friend)
+//        treeNode.children = friendTree :: treeNode.children
+//        color(treeNode, friendsLeft, friendTree :: children, parent, n)
+//      } else {
+//        val child = children.head
+//        val childrenLeft = children.tail
+//        val newFriends = child.value.actor.friends.toList
+//        color(child, newFriends, childrenLeft, parent, n - 1)
+//      }
+//    }
+//    var treeNode = buildNode(root)
+//    val friends = root.friends.toList
+//    color(treeNode, friends, Nil, _parent, _n)
+//    treeNode
+//  }
+  
+  
+  def social_score(tree: MTree[Node], without: Set[Review], n: Int): Option[Score] = tree match {
+    case MTree(Node(actor, _, score), _, Nil) => 
+      score
+    case MTree(Node(actor, item, _), _, children) =>
+      val friendsScores = for {
+        child@ MTree(Node(friend, item, Some(score)), _, _) <- children
+//        val MTree(Node(friend, item, _), _, _) = child
+        weight <- weight(actor, friend, item, without, score) if (weight != 0)
+        score <- social_score(child, without, n + 1)
+      } yield Some(score, weight)
+      friends_score(friendsScores, n)
+  }
+
+  override def toString = "tree_" + super.toString
+
+}

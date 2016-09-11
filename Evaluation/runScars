@@ -1,0 +1,13 @@
+#! /bin/sh
+
+# convert each ' ' by '|'
+for ARG in "$@"
+do
+    ARGS="$ARGS|$ARG"
+done
+
+# remove first '|'
+ARGS=${ARGS#|}
+
+# then run
+mvn scala:run -q -DaddArgs="$ARGS"

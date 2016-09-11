@@ -1,0 +1,128 @@
+package fr.cnrs.liris.scars.scorer.social.impl
+
+import fr.cnrs.liris.scars.api._
+import fr.cnrs.liris.scars.scorer.social._
+
+/**
+ * A scorer which estimates the score of an item by a actor using the actor's friends' scores.
+ * To estimate an item scored by a actor, it ask the actor friends score for this item and
+ * combine them. For each friend, if it didn't scored the item, then it ask to his friends...
+ *
+ * @author  Simon Meyffret
+ * @version 0.0.1
+ * @since   scala 2.8
+ * Date: 18 sept. 2010
+ * Time: 18:54:25
+ *
+ * @param similarity relations between actor to get friends and friends coefficients
+ * @param scores scores already defined in the system, used to get friends scores
+ * @param hops maximum scores you can ask in the same relation branch
+ * @param depth maximum depth you can go in a branch to ask for score
+ * @param alpha0 the weight of actor's score regarding his friends
+ * @param beta0 the weight of friends' score regarding a actor
+ */
+
+abstract class FastCycleSocialScorer(hops: Int, depth: Int, alpha: Double = 0.5) extends SocialScorer(hops, depth, alpha) {
+
+  type RatingsCache = Map[Actor, List[Option[(Score, Double)]]]
+  
+  abstract sealed class Action
+  case class Request(requesters: List[Actor], actor: Actor, parent: Parent) extends Action
+  case class Response(actor: Actor, requesters: List[Actor], score: Option[Score]) extends Action
+  
+  def social_score(original_requester: Actor, item: Item, original_parent: Parent, without: Set[Review], hops: Int, n: Int) = {
+    
+    @scala.annotation.tailrec
+    def run(agenda: List[Action], ratings: Map[Actor, List[Option[(Score, Double)]]]): Option[Score] = {
+//      println(agenda)
+      agenda match {
+        
+      case Request(requesters, actor, parent) :: rest =>
+        val score0 = score_0(actor, item, without)
+        val n = requesters.size
+        if (score0.isDefined || n >= depth || actor.friendsCount == 0) {
+          if (requesters.isEmpty) {
+            score0
+          } else {
+            val (newAgenda, newRatings) = sendResponse(
+              requesters.head, item, without, actor, score0,
+              requesters.tail, rest, ratings)
+            run(newAgenda, newRatings)
+          }
+//          val action = Response(requesters, actor, score0)
+//          run(action :: rest, ratings)
+        } else if (n == depth - 1) { // calculer à la main si on est au dernier saut
+          val friendsScores = friends(actor, parent, item, without).map { friend =>
+            for {
+              score <- score_0(friend, item, without)
+              weight <- weight(actor, friend, item, without, score) if (weight != 0)
+            } yield (score, weight)
+          }
+          val friendsScore = friends_score(friendsScores, depth - 1)
+          
+          if (requesters.isEmpty) {
+            friendsScore
+          } else {
+            val (newAgenda, newRatings) = sendResponse(
+              requesters.head, item, without, actor, friendsScore,
+              requesters.tail, rest, ratings)
+            run(newAgenda, newRatings)
+          }
+//          val action = Response(requesters, actor, friendsScore)
+//          run(action :: rest, ratings)
+        } else {
+          val newAgenda = friends(actor, parent).view.
+            map{ f => Request(actor :: requesters, f, parents(parent, actor)) }.toList
+          run(newAgenda ::: rest, ratings)
+        }
+        
+      case Response(actor, Nil, score) :: Nil =>
+        score
+        
+//      case Response(actor :: requesters, friend, friendScore) :: rest =>
+//        println(agenda)
+//        val (newAgenda, newRatings) = sendResponse(actor, item, friend, friendScore, requesters, rest, ratings)
+//        run(newAgenda, newRatings)
+        
+      case _ =>
+        sys.error("Problème dans la gestion de l'agenda, action inconnue :\n" + agenda)
+    }}
+    
+    run(Request(Nil, original_requester, original_parent) :: Nil, Map.empty)
+  }
+
+  @scala.annotation.tailrec
+  final def sendResponse(actor: Actor, item: Item, without: Set[Review], friend: Actor, friendScoreOption: Option[Score],
+                   requesters: List[Actor], rest: List[Action], 
+                   ratings: RatingsCache
+  ): (List[Action], RatingsCache) = {
+    
+    val existings_ratings = ratings.getOrElse(actor, Nil)
+    val new_rating: Option[(Score, Double)] = for{
+      score <- friendScoreOption
+      weight <- weight(actor, friend, item, without, score) if (weight != 0)
+    } yield (score, weight)
+    val friendsScores = new_rating :: existings_ratings
+    
+    val hasAllResponses = friendsScores.lengthCompare(actor.friendsCount) == 0
+    if (hasAllResponses) {
+      val n = requesters.size
+      val score = friends_score(friendsScores, n)
+      if (n == 0) {
+        val response = Response(actor, requesters, score)
+        (response :: rest, ratings - actor)
+      } else {
+        sendResponse(
+          requesters.head, item, without, actor, score,
+          requesters.tail, rest, ratings - actor)
+      }
+    } else {
+      val new_ratings = ratings + (actor -> friendsScores)
+      (rest, new_ratings)
+    }
+  }
+
+
+  override def toString = "fastcycle_" + super.toString
+
+}

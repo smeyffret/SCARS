@@ -1,0 +1,18 @@
+#! /bin/sh
+
+for file in $@
+do
+    awk '{
+    conf=$4;
+    number=$5;
+    if(conf!=""){
+        totalConf+=conf;
+    }
+    if(number!=""){
+        totalNb+=number;
+        count+=1
+    }
+    } END {
+    print "'$file'", totalConf/count, totalNb/count
+    }' $file
+done
