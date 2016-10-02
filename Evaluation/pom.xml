@@ -6,8 +6,8 @@
   <version>1.1-SNAPSHOT</version>
   <inceptionYear>2011</inceptionYear>
   <properties>
-  	<scala.version>2.9.1</scala.version>
-  	<encoding>UTF-8</encoding>
+    <scala.version>2.10.6</scala.version>
+    <encoding>UTF-8</encoding>
   </properties>
 
   <repositories>
@@ -33,6 +33,11 @@
       <version>${scala.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.scala-lang</groupId>
+      <artifactId>scala-actors</artifactId>
+      <version>${scala.version}</version>
+    </dependency>
+    <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.8.1</version>
@@ -40,35 +45,35 @@
     </dependency>
     <dependency>
       <groupId>org.scala-tools.testing</groupId>
-      <artifactId>specs_${scala.version}</artifactId>
+      <artifactId>specs_2.10</artifactId>
       <version>1.6.9</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.scalatest</groupId>
-      <artifactId>scalatest_${scala.version}</artifactId>
-      <version>1.6.1</version>
+      <artifactId>scalatest_2.10</artifactId>
+      <version>1.9.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
         <groupId>${project.groupId}</groupId>
-    	<artifactId>Core</artifactId>
+        <artifactId>Core</artifactId>
         <version>${project.version}</version>
     </dependency>
     <dependency>
-    	<groupId>${project.groupId}</groupId>
-    	<artifactId>Scorer</artifactId>
-    	<version>${project.version}</version>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>Scorer</artifactId>
+        <version>${project.version}</version>
     </dependency>
     <dependency>
-    	<groupId>${project.groupId}</groupId>
-    	<artifactId>FileEpinions</artifactId>
-    	<version>${project.version}</version>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>FileEpinions</artifactId>
+        <version>${project.version}</version>
     </dependency>
     <dependency>
-    	<groupId>${project.groupId}</groupId>
-    	<artifactId>DBEpinions</artifactId>
-    	<version>${project.version}</version>
+        <groupId>${project.groupId}</groupId>
+        <artifactId>DBEpinions</artifactId>
+        <version>${project.version}</version>
     </dependency>
   </dependencies>
 
